@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI 周易占卜</title>
+    <style>
+        /* 简单的 CSS 样式让页面好看一点 */
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f5f5f5;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+        }
+        .container {
+            background: white;
+            padding: 2rem;
+            border-radius: 15px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            width: 100%;
+            max-width: 600px;
+        }
+        h1 { text-align: center; color: #333; }
+        .input-group { margin-bottom: 20px; }
+        input[type="text"] {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            box-sizing: border-box; /* 确保padding不撑破宽度 */
+            font-size: 16px;
+        }
+        button {
+            width: 100%;
+            padding: 12px;
+            background-color: #2c3e50;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            cursor: pointer;
+            transition: background 0.3s;
+        }
+        button:hover { background-color: #34495e; }
+        button:disabled { background-color: #95a5a6; cursor: not-allowed; }
+        
+        #result-area {
+            margin-top: 20px;
+            padding: 20px;
+            background: #f9f9f9;
+            border-radius: 8px;
+            border-left: 5px solid #2c3e50;
+            display: none; /* 默认隐藏 */
+            white-space: pre-wrap; /* 保留换行符 */
+            line-height: 1.6;
+        }
+        .loading {
+            text-align: center;
+            display: none;
+            color: #666;
+            margin-top: 20px;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>☯️ AI 周易占卜</h1>
+    <div class="input-group">
+        <input type="text" id="question" placeholder="心中默念所求之事（可选）...">
+    </div>
+    <button id="btn-divine" onclick="startDivination()">开始起卦</button>
+
+    <div id="loading" class="loading">
+        正在大衍筮法起卦并请求 AI 解读...<br>
+        (可能需要几秒钟，请耐心等待)
+    </div>
+
+    <div id="result-area"></div>
+</div>
+
+<script>
+    async function startDivination() {
+        const questionInput = document.getElementById('question');
+        const btn = document.getElementById('btn-divine');
+        const loading = document.getElementById('loading');
+        const resultArea = document.getElementById('result-area');
+
+        // 1. 准备状态
+        const question = questionInput.value;
+        btn.disabled = true;
+        btn.innerText = "正在推演...";
+        loading.style.display = 'block';
+        resultArea.style.display = 'none';
+        resultArea.innerText = '';
+
+        try {
+            // 2. 发送请求给后端 Python
+            const response = await fetch('http://localhost:8000/api/divine', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ question: question })
+            });
+
+            const data = await response.json();
+
+            // 3. 处理结果，展示起卦过程日志 + AI 解读
+            if (data.success) {
+                const log = data.log || '';
+                const ai = data.result || '';
+                resultArea.innerText = (log ? log + "\n\n" : "") + "=== AI 解读 ===\n" + ai;
+                resultArea.style.display = 'block';
+            } else {
+                alert("出错啦：" + (data.detail || data.error));
+            }
+
+        } catch (error) {
+            console.error('Error:', error);
+            alert("无法连接到服务器，请确保 server.py 正在运行。");
+        } finally {
+            // 4. 恢复状态
+            btn.disabled = false;
+            btn.innerText = "开始起卦";
+            loading.style.display = 'none';
+        }
+    }
+</script>
+
+</body>
+</html>
