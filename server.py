@@ -1,19 +1,18 @@
 # server.py
-from fastapi import FastAPI, HTTPException
-from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
-from main import IChing  # 引入你之前写的 IChing 类
-# server.py
-from fastapi import FastAPI, HTTPException
-from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
-from main import IChing  # 引入你之前写的 IChing 类
-import io
 import sys
+import io
+import queue
+import threading
+import time
+from fastapi import FastAPI, HTTPException
+from fastapi.responses import StreamingResponse
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
+from main import IChing
 
 app = FastAPI()
 
-# 允许跨域请求 (为了让前端网页能访问后端接口)
+# 允许跨域请求
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -22,77 +21,117 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# 定义前端发送的数据格式
 class DivinationRequest(BaseModel):
     question: str = ""
 
-# 初始化你的占卜系统 (默认关闭 verbose，以便网页端按需开启)
-# 注意：确保 Ollama 已经在后台运行
+# 初始化占卜系统 (确保 Ollama 已运行)
 iching_system = IChing(
     ollama_url="http://localhost:11434",
     model="qwen3:4b",
-    verbose=False,  # 默认关闭详细打印
-    concise=True    # 使用精简模式，适合网页展示
+    verbose=True,  # 必须开启 verbose 才能看到起卦过程
+    concise=True
 )
 
-
-@app.get("/")
-def read_root():
-    return {"status": "周易占卜API正在运行"}
-
-
-@app.post("/api/divine")
-def create_divination(request: DivinationRequest):
+class StreamCapture:
     """
-    接收前端的问题，调用 IChing 系统，并捕获起卦时的控制台输出（完整过程），返回结果和日志
+    一个文件流对象，用于捕获 sys.stdout 并将其放入队列中。
+    这样我们可以通过生成器读取队列，实现流式输出。
     """
+    def __init__(self, q):
+        self.q = q
+
+    def write(self, text):
+        # 将捕获到的文本放入队列
+        self.q.put(text)
+
+    def flush(self):
+        pass
+
+def run_divination_thread(question: str, q: queue.Queue):
+    """
+    在独立线程中运行占卜逻辑，并将标准输出重定向到队列。
+    """
+    # 1. 保存旧的 stdout
+    old_stdout = sys.stdout
+    # 2. 重定向 stdout 到我们的捕获器
+    sys.stdout = StreamCapture(q)
+
     try:
-        # 1. 检查 Ollama 连接
-        if not iching_system.ollama.check_connection():
-            raise HTTPException(status_code=503, detail="无法连接到 AI 服务 (Ollama)，请检查服务是否开启。")
-
-        # 2. 为了在网页端看到起卦全过程，我们临时启用 verbose 并捕获 stdout
-        original_verbose = iching_system.verbose
-        original_div_verbose = iching_system.divination.verbose
-        iching_system.verbose = True
-        iching_system.divination.verbose = True
-
-        buf = io.StringIO()
-        old_stdout = sys.stdout
-        chunks = []
-        try:
-            sys.stdout = buf
-            # 使用流式方式，按主程序运行顺序输出并捕获控制台字符
-            gen = iching_system.divine(question=request.question, stream=True)
-            # 消费生成器，主程序在控制台是边打印边消费，这里复现相同行为并收集所有chunk
-            for chunk in gen:
-                try:
-                    # chunk 已是清理后的文本片段，按顺序追加
-                    chunks.append(chunk)
-                except Exception:
-                    # 忽略单个片段错误，继续
-                    pass
-        finally:
-            # 恢复状态
-            sys.stdout = old_stdout
-            iching_system.verbose = original_verbose
-            iching_system.divination.verbose = original_div_verbose
-
-        log = buf.getvalue()
-        result_text = ''.join(chunks)
-
-        return {
-            "success": True,
-            "question": request.question,
-            "result": result_text,
-            "log": log
-        }
-
+        # 3. 运行占卜
+        # 注意：这里我们调用的是 main.py 里封装好的 divine 方法
+        # 我们开启 stream=True，这样 divine 内部处理 AI 响应时也是流式的
+        # 但我们需要 iching_system.divine 的输出（包括 print）都进 stdout
+        
+        # 在 main.py 的 divine 方法中：
+        # - 起卦过程是直接 print 的 -> 会被 StreamCapture 捕获
+        # - AI 生成部分：
+        #   如果 stream=True，它返回 generator。我们需要手动迭代并打印，
+        #   以便让 StreamCapture 捕获到。
+        
+        generator = iching_system.divine(question=question, stream=True)
+        
+        # 迭代生成器（AI 的输出部分）
+        # 这里的 chunk 是 AI 返回的文本片段
+        if generator and hasattr(generator, '__iter__') and not isinstance(generator, str):
+            for chunk in generator:
+                # 这里的 chunk 仅仅是字符串，我们需要 print 出来，
+                # 这样它才会进入 sys.stdout (也就是我们的 queue)
+                # 注意：main.py 的 divine 方法在使用 stream 时，
+                # 内部已经有 print(cleaned_chunk) 了 (看 main.py 第 136 行)
+                # 所以我们这里其实只需要消耗生成器即可，不需要重复 print，
+                # 否则会打印两遍。
+                pass
+        
     except Exception as e:
-        return {"success": False, "error": str(e)}
+        print(f"\n[Error] 占卜过程中发生错误: {e}")
+    finally:
+        # 4. 恢复 stdout
+        sys.stdout = old_stdout
+        # 5. 放入结束标记
+        q.put(None) 
 
+@app.post("/api/divine-stream")
+def divine_stream(request: DivinationRequest):
+    """
+    流式接口：实时返回起卦过程的控制台输出 + AI 结果
+    """
+    # 创建一个线程安全的队列
+    q = queue.Queue()
+
+    # 启动后台线程运行占卜
+    t = threading.Thread(target=run_divination_thread, args=(request.question, q))
+    t.start()
+
+    def event_generator():
+        """
+        生成器：从队列中读取数据并 yield 给前端
+        """
+        # 标记是否已经发送过 AI 思考信号
+        ai_signal_sent = False
+        
+        while True:
+            # 从队列获取数据 (阻塞等待)
+            data = q.get()
+            
+            # 如果收到 None，说明线程结束
+            if data is None:
+                break
+            
+            # 逻辑判断：检测是否要插入“假进度条”的触发信号
+            # main.py 中有一句 print("正在请AI大师解卦...")
+            # 我们检测这句话，并在其后发送特殊标记
+            
+            yield data
+            
+            if "正在请AI大师解卦" in data and not ai_signal_sent:
+                yield "\n<<<AI_THINKING>>>\n"
+                ai_signal_sent = True
+
+    # 返回流式响应
+    return StreamingResponse(event_generator(), media_type="text/plain")
 
 if __name__ == "__main__":
     import uvicorn
-    # 启动服务器，端口 8000
+    # 启动服务器
+    print("服务器已启动: http://localhost:8000")
     uvicorn.run(app, host="0.0.0.0", port=8000)
