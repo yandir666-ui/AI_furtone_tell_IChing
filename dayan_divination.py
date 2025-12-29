@@ -243,7 +243,7 @@ class DayanDivination:
         """
         print("\n\n")
         print("="*60)
-        print(f"{'【 本 卦 】':^28} {'【 之 卦 】':^28}")
+        print(f"{'【 本 卦 】':^28}")
         print("="*60)
         
         pos_names = ["初", "二", "三", "四", "五", "上"]
@@ -253,55 +253,34 @@ class DayanDivination:
             num = self.lines[i]
             p_name = pos_names[i]
             
-            # 定义符号
-            yin = "—  —"
-            yang = "————"
+            # 定义符号（短横，便于紧凑显示）
+            yin = "— —"
+            yang = "———"
             
-            # 构建本卦和之卦的图形
-            if num == 6:  # 老阴 -> 变阳
+            # 构建本卦的图形（仅显示本卦，去掉之卦）
+            if num == 6:  # 老阴 -> 变阳（显示为老阴的本卦形态）
                 left = f"{yin} x"
-                right = yang
                 name = "老阴"
             elif num == 7:  # 少阳 -> 不变
                 left = f"{yang}  "
-                right = yang
                 name = "少阳"
             elif num == 8:  # 少阴 -> 不变
                 left = f"{yin}  "
-                right = yin
                 name = "少阴"
             elif num == 9:  # 老阳 -> 变阴
                 left = f"{yang} o"
-                right = yin
                 name = "老阳"
                 
-            # 格式化输出
-            # 例如: 上九: ———— o (老阳)      ->      —  —
-            print(f"{p_name}{'九' if num%2!=0 else '六'}: {left} ({name}){'':<8} -> {'':<8}{right}")
+            # 格式化输出（仅本卦），对齐本卦图像并缩短横杠
+            label = f"{p_name}{'九' if num%2!=0 else '六'}:"
+            print(f"{label:<4} {left:<9} ({name})")
             
         print("="*60)
         self.analyze_summary()
         
     def analyze_summary(self):
         """分析变爻情况并给出断语参考"""
-        # 统计变爻
-        changes = []
-        for idx, val in enumerate(self.lines):
-            if val == 6 or val == 9:
-                changes.append(idx + 1)  # 记录是第几爻动
-        
-        print("\n[断语参考]")
-        if len(changes) == 0:
-            print("六爻安静，无变卦。请参考【本卦】卦辞。")
-        elif len(changes) == 1:
-            print(f"一爻动（第{changes[0]}爻）。请参考【本卦】变爻之爻辞。")
-        elif len(changes) == 2:
-            print(f"二爻动（第{changes}爻）。以本卦二变爻之辞占，仍以上爻为主。")
-        elif len(changes) == 3:
-            print(f"三爻动。以本卦与之卦卦辞合占。")
-        elif len(changes) > 3:
-            print(f"变爻多达{len(changes)}个。请参考【之卦】卦辞为主。")
-        print("="*60)
+        return
 
 
 # --- 执行 ---
@@ -310,5 +289,4 @@ if __name__ == "__main__":
     result = sim.run()
     print("\n结果数据:")
     print(f"本卦: {result['original_binary']}")
-    print(f"之卦: {result['changed_binary']}")
     print(f"变爻: {result['changing_lines']}")
