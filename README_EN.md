@@ -18,7 +18,7 @@ An intelligent I-Ching divination system based on traditional Dayan stalks metho
 
 ## Requirements
 
-- Python 3.11+
+- Python 3.11
 - Ollama (locally deployed)
 - requests library
 
@@ -114,7 +114,6 @@ The `Figure_1.png` file in the project illustrates the numerical distribution of
 ### v1.1 (Current)
 - Added support for the fine-tuned model.
 - Integrated asynchronous algorithms to optimize response wait time.
-- Removed redundant test scripts.
 
 ### v1.0 (2025-12-28)
 - Implemented full Dayan stalks simulation.
