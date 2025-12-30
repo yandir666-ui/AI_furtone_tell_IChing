@@ -12,7 +12,7 @@
 
 ## 环境要求
 
-- Python 3.7+
+- Python 3.11
 - Ollama (本地部署)
 - requests库
 
